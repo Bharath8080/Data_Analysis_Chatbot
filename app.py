@@ -1,8 +1,8 @@
 import streamlit as st
 import os
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 from pandasai.llm.openai import OpenAI
 from pandasai.smart_dataframe import SmartDataframe
@@ -50,35 +50,123 @@ st.markdown("""
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Sidebar for file upload and API key
-with st.sidebar:
-    st.header("⚙️ Settings")
-    openai_api_key = st.text_input("OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""))
-    
-    st.header("📁 Upload Data")
-    uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=["csv", "xlsx", "xls"])
-    
-    if uploaded_file is not None:
-        try:
-            # Read the file based on its extension
-            file_extension = uploaded_file.name.split('.')[-1].lower()
-            if file_extension == 'csv':
-                df = pd.read_csv(uploaded_file)
-            elif file_extension in ['xlsx', 'xls']:
-                df = pd.read_excel(uploaded_file)
+def plot_and_display_chart(df, prompt):
+    """Function to create and display charts based on the data and user query"""
+    try:
+        # Set the style for seaborn
+        sns.set_style("whitegrid")
+        
+        # Create a figure with a larger size
+        plt.figure(figsize=(12, 6))
+        
+        # Get column types
+        numeric_cols = df.select_dtypes(include=['int64', 'float64']).columns
+        categorical_cols = df.select_dtypes(include=['object', 'category']).columns
+        
+        # Determine plot type based on user query
+        prompt_lower = prompt.lower()
+        
+        if "bar" in prompt_lower or "barplot" in prompt_lower:
+            if len(categorical_cols) > 0:
+                # Create bar plot for categorical data
+                if len(numeric_cols) > 0:
+                    # If we have numeric columns, use the first one for the y-axis
+                    sns.barplot(x=categorical_cols[0], y=numeric_cols[0], data=df)
+                    plt.title(f'Bar Plot of {numeric_cols[0]} by {categorical_cols[0]}')
+                else:
+                    # If no numeric columns, create a count plot
+                    sns.countplot(x=categorical_cols[0], data=df)
+                    plt.title(f'Count of {categorical_cols[0]}')
             else:
-                st.error("Unsupported file format. Please upload a CSV or Excel file.")
-                df = None
+                st.warning("No categorical columns found for bar plot")
+                return
                 
-            if df is not None:
-                st.session_state['df'] = df
-                st.success(f"Successfully uploaded: {uploaded_file.name}")
-        except Exception as e:
-            st.error(f"Error reading file: {str(e)}")
-
-# Title and description with image
-st.markdown('<h1><img src="https://static.wixstatic.com/media/97b8c3_d0a1a2e3860e436fbc5712b8c33c65f9~mv2.gif" width="60" height="55" style="vertical-align: middle;"> Data Analysis Chatbot</h1>', unsafe_allow_html=True)
-st.markdown("Ask questions about your data and get instant insights!")
+        elif "pie" in prompt_lower or "pie chart" in prompt_lower:
+            if len(categorical_cols) > 0:
+                # Create pie chart for categorical data
+                if len(numeric_cols) > 0:
+                    # If we have numeric columns, use the first one for values
+                    values = df.groupby(categorical_cols[0])[numeric_cols[0]].sum()
+                else:
+                    # If no numeric columns, use counts
+                    values = df[categorical_cols[0]].value_counts()
+                
+                plt.pie(values, labels=values.index, autopct='%1.1f%%')
+                plt.title(f'Pie Chart of {categorical_cols[0]}')
+            else:
+                st.warning("No categorical columns found for pie chart")
+                return
+                
+        elif "line" in prompt_lower or "lineplot" in prompt_lower:
+            if len(numeric_cols) >= 2:
+                # Create line plot for numeric data
+                sns.lineplot(data=df, x=numeric_cols[0], y=numeric_cols[1])
+                plt.title(f'Line Plot of {numeric_cols[1]} vs {numeric_cols[0]}')
+            else:
+                st.warning("Need at least two numeric columns for line plot")
+                return
+                
+        elif "scatter" in prompt_lower or "scatterplot" in prompt_lower:
+            if len(numeric_cols) >= 2:
+                # Create scatter plot for numeric data
+                sns.scatterplot(data=df, x=numeric_cols[0], y=numeric_cols[1])
+                plt.title(f'Scatter Plot of {numeric_cols[1]} vs {numeric_cols[0]}')
+            else:
+                st.warning("Need at least two numeric columns for scatter plot")
+                return
+                
+        elif "hist" in prompt_lower or "histogram" in prompt_lower:
+            if len(numeric_cols) > 0:
+                # Create histogram for numeric data
+                sns.histplot(data=df, x=numeric_cols[0], kde=True)
+                plt.title(f'Distribution of {numeric_cols[0]}')
+            else:
+                st.warning("No numeric columns found for histogram")
+                return
+                
+        elif "box" in prompt_lower or "boxplot" in prompt_lower:
+            if len(numeric_cols) > 0 and len(categorical_cols) > 0:
+                # Create box plot
+                sns.boxplot(x=categorical_cols[0], y=numeric_cols[0], data=df)
+                plt.title(f'Box Plot of {numeric_cols[0]} by {categorical_cols[0]}')
+            else:
+                st.warning("Need both numeric and categorical columns for box plot")
+                return
+                
+        elif "heatmap" in prompt_lower or "correlation" in prompt_lower:
+            if len(numeric_cols) >= 2:
+                # Create correlation heatmap
+                correlation = df[numeric_cols].corr()
+                sns.heatmap(correlation, annot=True, cmap='coolwarm', center=0)
+                plt.title('Correlation Heatmap')
+            else:
+                st.warning("Need at least two numeric columns for correlation heatmap")
+                return
+                
+        else:
+            # Default to correlation heatmap if no specific plot type is requested
+            if len(numeric_cols) >= 2:
+                correlation = df[numeric_cols].corr()
+                sns.heatmap(correlation, annot=True, cmap='coolwarm', center=0)
+                plt.title('Correlation Heatmap')
+            else:
+                st.warning("No specific plot type requested and insufficient data for default plot")
+                return
+        
+        # Rotate x-axis labels if they're too long
+        plt.xticks(rotation=45, ha='right')
+        
+        # Adjust layout to prevent label cutoff
+        plt.tight_layout()
+        
+        # Display the plot in Streamlit
+        st.pyplot(plt)
+        
+        # Close the plot to free memory
+        plt.close()
+        
+    except Exception as e:
+        st.error(f"Error creating the plot: {str(e)}")
 
 def format_response(response):
     """Format the response to be more readable"""
@@ -103,7 +191,7 @@ def format_response(response):
 def chat_with_csv(df, prompt):
     """Function to handle chat with CSV using PandasAI"""
     try:
-        llm = OpenAI(api_token=openai_api_key)
+        llm = OpenAI(id="gpt-4o", api_token=openai_api_key)
         
         # Enhanced prompt for better responses
         enhanced_prompt = f"""
@@ -115,7 +203,7 @@ def chat_with_csv(df, prompt):
         2. Use clear, concise language
         3. Format numbers and statistics appropriately
         4. If showing calculations, explain the steps
-        5. If creating visualizations, explain what they show
+        5. If creating visualizations, use seaborn for plotting
         6. End with key takeaways or recommendations
         
         For list queries (like 'what are all item names'), please return a simple list of items.
@@ -151,9 +239,44 @@ def chat_with_csv(df, prompt):
                 st.warning(f"Could not get simple list, falling back to full analysis: {str(e)}")
         
         result = pandas_ai.chat(prompt)
+        
+        # Check if the prompt is about plotting
+        if any(word in prompt.lower() for word in ["plot", "graph", "chart", "visualize", "show"]):
+            plot_and_display_chart(df, prompt)
+            
         return format_response(result)
     except Exception as e:
         return f"Error processing query: {str(e)}"
+
+# Sidebar for file upload and API key
+with st.sidebar:
+    st.header("⚙️ Settings")
+    openai_api_key = st.text_input("OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""))
+    
+    st.header("📁 Upload Data")
+    uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=["csv", "xlsx", "xls"])
+    
+    if uploaded_file is not None:
+        try:
+            # Read the file based on its extension
+            file_extension = uploaded_file.name.split('.')[-1].lower()
+            if file_extension == 'csv':
+                df = pd.read_csv(uploaded_file)
+            elif file_extension in ['xlsx', 'xls']:
+                df = pd.read_excel(uploaded_file)
+            else:
+                st.error("Unsupported file format. Please upload a CSV or Excel file.")
+                df = None
+                
+            if df is not None:
+                st.session_state['df'] = df
+                st.success(f"Successfully uploaded: {uploaded_file.name}")
+        except Exception as e:
+            st.error(f"Error reading file: {str(e)}")
+
+# Title and description with image
+st.markdown('<h1><img src="https://static.wixstatic.com/media/97b8c3_d0a1a2e3860e436fbc5712b8c33c65f9~mv2.gif" width="60" height="55" style="vertical-align: middle;"> Data Analysis Chatbot</h1>', unsafe_allow_html=True)
+st.markdown("Ask questions about your data and get instant insights!")
 
 # Main content area
 if 'df' in st.session_state:
