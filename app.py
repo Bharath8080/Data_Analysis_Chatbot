@@ -56,13 +56,25 @@ with st.sidebar:
     openai_api_key = st.text_input("OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""))
     
     st.header("📁 Upload Data")
-    uploaded_file = st.file_uploader("Choose a CSV file", type=["csv"])
+    uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=["csv", "xlsx", "xls"])
     
     if uploaded_file is not None:
-        # Read the CSV file
-        df = pd.read_csv(uploaded_file)
-        st.session_state['df'] = df
-        st.success(f"Successfully uploaded: {uploaded_file.name}")
+        try:
+            # Read the file based on its extension
+            file_extension = uploaded_file.name.split('.')[-1].lower()
+            if file_extension == 'csv':
+                df = pd.read_csv(uploaded_file)
+            elif file_extension in ['xlsx', 'xls']:
+                df = pd.read_excel(uploaded_file)
+            else:
+                st.error("Unsupported file format. Please upload a CSV or Excel file.")
+                df = None
+                
+            if df is not None:
+                st.session_state['df'] = df
+                st.success(f"Successfully uploaded: {uploaded_file.name}")
+        except Exception as e:
+            st.error(f"Error reading file: {str(e)}")
 
 # Title and description with image
 st.markdown('<h1><img src="https://static.wixstatic.com/media/97b8c3_d0a1a2e3860e436fbc5712b8c33c65f9~mv2.gif" width="60" height="55" style="vertical-align: middle;"> Data Analysis Chatbot</h1>', unsafe_allow_html=True)
