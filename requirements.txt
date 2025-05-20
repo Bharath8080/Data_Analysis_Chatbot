@@ -3,6 +3,6 @@ pandas
 matplotlib
 seaborn
 python-dotenv
-pandasai==2.0.24
+pandasai
 openai
 openpyxl
